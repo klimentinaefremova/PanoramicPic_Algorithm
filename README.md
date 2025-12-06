@@ -1,4 +1,4 @@
-# 
+# Algorith for making panormaic pictures from multiple pictures
 
 A Python-based project for creating panoramic images from multiple overlapping photographs, developed as part of the **Digital Processing of Images** course at the **Faculty of Computer Science and Engineering, University Ss. Cyril and Methodius**.
 
