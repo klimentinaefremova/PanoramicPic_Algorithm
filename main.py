@@ -2,13 +2,126 @@ import cv2
 import argparse
 import sys
 import os
+import glob
+from pathlib import Path
 
 # Додади патека до src директориумот
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 
-from src.image_loader import vcitaj_sliki, promeni_golemina_na_slikite  # <-- CHANGED HERE
+from src.image_loader import vcitaj_sliki, promeni_golemina_na_slikite
 from src.stitcher import PanoramaStitcher
 from src.utils import pokazi_slika, zacuvaj_slika
+
+def najdi_sliki_vo_folder(folder_patistina):
+    """
+    Најди ги сите panorama part слики во папка
+
+    Args:
+        folder_patistina (str): Патека до папката
+
+    Returns:
+        list: Сортирана листа на патеки до сликите
+    """
+    # Најди ги сите слики што завршуваат на _Part*.jpg
+    pattern = os.path.join(folder_patistina, "*_panorama_Part*.jpg")
+    sliki_patisti = glob.glob(pattern)
+
+    # Ако не најде со голема P, пробај со мала p
+    if not sliki_patisti:
+        pattern = os.path.join(folder_patistina, "*_Panorama_Part*.jpg")
+        sliki_patisti = glob.glob(pattern)
+
+    # Сортирај ги по бројот (Part1, Part2, Part3...)
+    def sortiraj_po_broj(patistina):
+        # Извлечи го бројот од името
+        ime = os.path.basename(patistina)
+        # Најди го бројот по "Part"
+        import re
+        match = re.search(r'Part(\d+)', ime)
+        if match:
+            return int(match.group(1))
+        return 0
+
+    sliki_patisti.sort(key=sortiraj_po_broj)
+
+    return sliki_patisti
+
+def obraboti_panorama_folder(folder_patistina, pokazi_rezultat=False, maks_sirina=1200):
+    """
+    Обработи една panorama папка
+
+    Args:
+        folder_patistina (str): Патека до папката со слики
+        pokazi_rezultat (bool): Дали да се прикаже резултатот
+        maks_sirina (int): Максимална ширина на сликите
+
+    Returns:
+        bool: Дали беше успешно
+    """
+    print(f"\n{'='*60}")
+    print(f"Обработка на папка: {folder_patistina}")
+    print(f"{'='*60}")
+
+    # Провери дали папката постои
+    if not os.path.exists(folder_patistina):
+        print(f"Грешка: Папката {folder_patistina} не постои!")
+        return False
+
+    # Најди ги сликите
+    sliki_patisti = najdi_sliki_vo_folder(folder_patistina)
+
+    if not sliki_patisti:
+        print(f"Грешка: Не се пронајдени panorama part слики во {folder_patistina}")
+        print(f"  Очекувани имиња: *_panorama_Part*.jpg или *_Panorama_Part*.jpg")
+        return False
+
+    print(f"Пронајдени {len(sliki_patisti)} слики:")
+    for patistina in sliki_patisti:
+        print(f"  • {os.path.basename(patistina)}")
+
+    # Вчитај ги сликите
+    print("\nВчитување на сликите...")
+    sliki = vcitaj_sliki(sliki_patisti)
+
+    if len(sliki) < 2:
+        print("Грешка: Неуспешно вчитување на доволно слики!")
+        return False
+
+    # Промени големина на сликите
+    print("Промена на големина на сликите...")
+    sliki = promeni_golemina_na_slikite(sliki, maks_sirina)
+
+    # Креирај панорама
+    print("Креирање на панорама...")
+    stitcher = PanoramaStitcher()
+    panorama = stitcher.napravi_panorama(sliki)
+
+    if panorama is None:
+        print("Неуспех при креирање на панорама!")
+        return False
+
+    # Генерирај име за резултатот
+    folder_ime = os.path.basename(folder_patistina)
+
+    # Извлечи го основното име (без _Panorama ако постои)
+    if folder_ime.endswith("_Panorama"):
+        osnovno_ime = folder_ime
+    else:
+        osnovno_ime = folder_ime
+
+    # Име на резултатот
+    ime_na_rezultat = f"{osnovno_ime}_Result.jpg"
+    patistina_na_rezultat = os.path.join(folder_patistina, ime_na_rezultat)
+
+    # Зачувај го резултатот
+    zacuvaj_slika(panorama, patistina_na_rezultat)
+
+    # Прикажи го резултатот ако е потребно
+    if pokazi_rezultat:
+        pokazi_slika(panorama, f"Резултат: {osnovno_ime}")
+
+    print(f"✅ Успешно креирана панорама: {ime_na_rezultat}")
+    return True
 
 def glavna_funkcija():
     """
@@ -16,14 +129,14 @@ def glavna_funkcija():
     """
     # Парсирај аргументи од командна линија
     parser = argparse.ArgumentParser(
-        description='Креирај панорама од повеќе слики',
+        description='Креирај панорама од повеќе слики или цели папки',
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
 
     parser.add_argument(
-        'sliki',
+        'vlez',
         nargs='+',
-        help='Патеки до сликите за спојување'
+        help='Патеки до сликите ИЛИ папки за спојување'
     )
 
     parser.add_argument(
@@ -41,47 +154,64 @@ def glavna_funkcija():
     parser.add_argument(
         '--maks_sirina',
         type=int,
-        default=800,
-        help='Максимална ширина на сликите за обработка (default: 800)'
+        default=1200,
+        help='Максимална ширина на сликите за обработка (default: 1200)'
+    )
+
+    parser.add_argument(
+        '--folder',
+        action='store_true',
+        help='Обработи цели папки наместо поединечни слики'
     )
 
     args = parser.parse_args()
 
-    # Провери дали има доволно слики
-    if len(args.sliki) < 2:
-        print("Грешка: Потребни се најмалку 2 слики!")
-        print("Употреба: python main.py слика1.jpg слика2.jpg [дополнителни слики...]")
-        return
+    # Провери дали обработуваме папки или поединечни слики
+    if args.folder:
+        # Обработка на папки
+        uspeshni = 0
+        vkupno = len(args.vlez)
 
-    # Вчитај ги сликите
-    print("Вчитување на сликите...")
-    sliki = vcitaj_sliki(args.sliki)  # <-- CHANGED HERE
+        for folder_patistina in args.vlez:
+            if obraboti_panorama_folder(folder_patistina, args.pokazi, args.maks_sirina):
+                uspeshni += 1
 
-    if len(sliki) < 2:
-        print("Грешка: Неуспешно вчитување на доволно слики!")
-        return
+        print(f"\n{'='*60}")
+        print(f"РЕЗИМЕ: Успешно обработени {uspeshni} од {vkupno} папки")
+        print(f"{'='*60}")
 
-    # Промени големина на сликите
-    print("Промена на големина на сликите...")
-    sliki = promeni_golemina_na_slikite(sliki, args.maks_sirina)
+    else:
+        # Стариот начин: обработка на поединечни слики
+        if len(args.vlez) < 2:
+            print("Грешка: Потребни се најмалку 2 слики!")
+            print("Употреба за слики: python main.py слика1.jpg слика2.jpg [дополнителни слики...]")
+            print("Употреба за папки: python main.py папка1 папка2 --folder")
+            return
 
-    # Креирај панорама
-    print("Креирање на панорама...")
-    stitcher = PanoramaStitcher()
-    panorama = stitcher.napravi_panorama(sliki)
+        print("Вчитување на сликите...")
+        sliki = vcitaj_sliki(args.vlez)
 
-    if panorama is None:
-        print("Неуспех при креирање на панорама!")
-        return
+        if len(sliki) < 2:
+            print("Грешка: Неуспешно вчитување на доволно слики!")
+            return
 
-    # Зачувај го резултатот
-    zacuvaj_slika(panorama, args.izlez)
+        print("Промена на големина на сликите...")
+        sliki = promeni_golemina_na_slikite(sliki, args.maks_sirina)
 
-    # Прикажи го резултатот ако е потребно
-    if args.pokazi:
-        pokazi_slika(panorama, "Панорама - Резултат")
+        print("Креирање на панорама...")
+        stitcher = PanoramaStitcher()
+        panorama = stitcher.napravi_panorama(sliki)
 
-    print("Процесот е успешно завршен!")
+        if panorama is None:
+            print("Неуспех при креирање на панорама!")
+            return
+
+        zacuvaj_slika(panorama, args.izlez)
+
+        if args.pokazi:
+            pokazi_slika(panorama, "Панорама - Резултат")
+
+        print("Процесот е успешно завршен!")
 
 if __name__ == "__main__":
     glavna_funkcija()
