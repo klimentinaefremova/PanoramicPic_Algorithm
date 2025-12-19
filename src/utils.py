@@ -1,45 +1,29 @@
 import cv2
 import numpy as np
+import os
 
-def pokazi_slika(slika, naslov="Слика", ceka_klik=True):
+def pokazi_slika(slika, naslov='Слика'):
     """
     Прикажи слика во прозорец
-
-    Args:
-        slika: Слика за прикажување
-        naslov (str): Наслов на прозорецот
-        ceka_klik (bool): Дали да чека клик за затворање
     """
     cv2.imshow(naslov, slika)
-    if ceka_klik:
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
 
-def zacuvaj_slika(slika, patistina_izlez="panorama_rezultat.jpg"):
+def zacuvaj_slika(slika, patistina):
     """
-    Зачувај ја сликата
-
-    Args:
-        slika: Слика за зачувување
-        patistina_izlez (str): Патека за зачувување
+    Зачувај слика на дадена патека
     """
-    cv2.imwrite(patistina_izlez, slika)
-    print(f"Сликата е зачувана како: {patistina_izlez}")
+    try:
+        cv2.imwrite(patistina, slika)
+        print(f"✅ Сликата е зачувана како: {patistina}")
+        return True
+    except Exception as e:
+        print(f"❌ Грешка при зачувување на сликата {patistina}: {e}")
+        return False
 
-def pretvori_vo_sivo(sliki):
+def pretvori_vo_sivo(slika):
     """
-    Претвори ги сликите во сиво
-
-    Args:
-        sliki (list): Листа на бои слики
-
-    Returns:
-        list: Листа на сиви слики
+    Претвори слика во сива боја
     """
-    sliki_sivi = []
-
-    for slika in sliki:
-        siva_slika = cv2.cvtColor(slika, cv2.COLOR_BGR2GRAY)
-        sliki_sivi.append(siva_slika)
-
-    return sliki_sivi
+    return cv2.cvtColor(slika, cv2.COLOR_BGR2GRAY)

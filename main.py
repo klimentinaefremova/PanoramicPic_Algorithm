@@ -46,7 +46,33 @@ def najdi_sliki_vo_folder(folder_patistina):
 
     return sliki_patisti
 
-def obraboti_panorama_folder(folder_patistina, pokazi_rezultat=False, maks_sirina=1200):
+def generiraj_unikatno_ime_za_slika(bazno_ime):
+    """
+    Генерирај уникатно име за слика што не постои
+
+    Args:
+        bazno_ime (str): Основно име на сликата (на пр. 'panorama_rezultat.jpg')
+
+    Returns:
+        str: Уникатно име за сликата
+    """
+    # Ако фајлот не постои, врати го оригиналното име
+    if not os.path.exists(bazno_ime):
+        return bazno_ime
+
+    # Извлечи име и екстензија
+    ime_bez_ekstenzija, ekstenzija = os.path.splitext(bazno_ime)
+
+    # Додај броеви додека не најдеме слободно име
+    brojach = 1
+    while True:
+        novo_ime = f"{ime_bez_ekstenzija}_{brojach}{ekstenzija}"
+        if not os.path.exists(novo_ime):
+            return novo_ime
+        brojach += 1
+
+def obraboti_panorama_folder(folder_patistina, pokazi_rezultat=False,
+                             maks_sirina=1200, smer='auto'):
     """
     Обработи една panorama папка
 
@@ -54,12 +80,16 @@ def obraboti_panorama_folder(folder_patistina, pokazi_rezultat=False, maks_sirin
         folder_patistina (str): Патека до папката со слики
         pokazi_rezultat (bool): Дали да се прикаже резултатот
         maks_sirina (int): Максимална ширина на сликите
-
+        smer (str): 'auto' за автоматска детекција, 'horizontal' за хоризонтална панорама, 'vertical' за вертикална
     Returns:
         bool: Дали беше успешно
     """
     print(f"\n{'='*60}")
     print(f"Обработка на папка: {folder_patistina}")
+    if smer == 'auto':
+        print(f"Насока: автоматско детектирање")
+    else:
+        print(f"Насока: {smer}")
     print(f"{'='*60}")
 
     # Провери дали папката постои
@@ -72,12 +102,12 @@ def obraboti_panorama_folder(folder_patistina, pokazi_rezultat=False, maks_sirin
 
     if not sliki_patisti:
         print(f"Грешка: Не се пронајдени panorama part слики во {folder_patistina}")
-        print(f"  Очекувани имиња: *_panorama_Part*.jpg или *_Panorama_Part*.jpg")
+        print(f" Очекувани имиња: *_panorama_Part*.jpg или *_Panorama_Part*.jpg")
         return False
 
     print(f"Пронајдени {len(sliki_patisti)} слики:")
     for patistina in sliki_patisti:
-        print(f"  • {os.path.basename(patistina)}")
+        print(f" • {os.path.basename(patistina)}")
 
     # Вчитај ги сликите
     print("\nВчитување на сликите...")
@@ -92,8 +122,11 @@ def obraboti_panorama_folder(folder_patistina, pokazi_rezultat=False, maks_sirin
     sliki = promeni_golemina_na_slikite(sliki, maks_sirina)
 
     # Креирај панорама
-    print("Креирање на панорама...")
-    stitcher = PanoramaStitcher()
+    if smer == 'auto':
+        print("Креирање на панорама (автоматска детекција на насока)...")
+    else:
+        print(f"Креирање на {smer} панорама...")
+    stitcher = PanoramaStitcher(smer=smer)
     panorama = stitcher.napravi_panorama(sliki)
 
     if panorama is None:
@@ -109,18 +142,29 @@ def obraboti_panorama_folder(folder_patistina, pokazi_rezultat=False, maks_sirin
     else:
         osnovno_ime = folder_ime
 
-    # Име на резултатот
-    ime_na_rezultat = f"{osnovno_ime}_Result.jpg"
+    # Додади насока во името на резултатот
+    if smer == 'auto':
+        # За автоматско детектирање, нема да додадеме насока во името
+        ime_na_rezultat = f"{osnovno_ime}_Result.jpg"
+    else:
+        ime_na_rezultat = f"{osnovno_ime}_Result_{smer}.jpg"
+
     patistina_na_rezultat = os.path.join(folder_patistina, ime_na_rezultat)
+
+    # Генерирај уникатно име ако фајлот веќе постои
+    patistina_na_rezultat = generiraj_unikatno_ime_za_slika(patistina_na_rezultat)
 
     # Зачувај го резултатот
     zacuvaj_slika(panorama, patistina_na_rezultat)
 
     # Прикажи го резултатот ако е потребно
     if pokazi_rezultat:
-        pokazi_slika(panorama, f"Резултат: {osnovno_ime}")
+        if smer == 'auto':
+            pokazi_slika(panorama, f"Резултат: {osnovno_ime}")
+        else:
+            pokazi_slika(panorama, f"Резултат: {osnovno_ime} ({smer})")
 
-    print(f"✅ Успешно креирана панорама: {ime_na_rezultat}")
+    print(f"✅ Успешно креирана панорама: {os.path.basename(patistina_na_rezultat)}")
     return True
 
 def glavna_funkcija():
@@ -142,7 +186,7 @@ def glavna_funkcija():
     parser.add_argument(
         '--izlez',
         default='panorama_rezultat.jpg',
-        help='Патека за зачувување на резултатот (default: panorama_rezultat.jpg)'
+        help='Патека за зачувување на резултатот (default: panorama_rezultat.jpg). Ако фајлот веќе постои, ќе се додаде број.'
     )
 
     parser.add_argument(
@@ -164,6 +208,13 @@ def glavna_funkcija():
         help='Обработи цели папки наместо поединечни слики'
     )
 
+    parser.add_argument(
+        '--smer',
+        choices=['auto', 'horizontal', 'vertical'],
+        default='auto',
+        help='Насока на спојување: auto за автоматска детекција (default), horizontal за хоризонтална панорама, vertical за вертикална панорама'
+    )
+
     args = parser.parse_args()
 
     # Провери дали обработуваме папки или поединечни слики
@@ -173,11 +224,15 @@ def glavna_funkcija():
         vkupno = len(args.vlez)
 
         for folder_patistina in args.vlez:
-            if obraboti_panorama_folder(folder_patistina, args.pokazi, args.maks_sirina):
+            if obraboti_panorama_folder(folder_patistina, args.pokazi, args.maks_sirina, args.smer):
                 uspeshni += 1
 
         print(f"\n{'='*60}")
         print(f"РЕЗИМЕ: Успешно обработени {uspeshni} од {vkupno} папки")
+        if args.smer == 'auto':
+            print(f"Насока на панорами: автоматско детектирање")
+        else:
+            print(f"Насока на паноами: {args.smer}")
         print(f"{'='*60}")
 
     else:
@@ -186,8 +241,13 @@ def glavna_funkcija():
             print("Грешка: Потребни се најмалку 2 слики!")
             print("Употреба за слики: python main.py слика1.jpg слика2.jpg [дополнителни слики...]")
             print("Употреба за папки: python main.py папка1 папка2 --folder")
+            print("Насока: python main.py слика1.jpg слика2.jpg --smer vertical")
             return
 
+        if args.smer == 'auto':
+            print("Креирање на панорама (автоматска детекција на насока)...")
+        else:
+            print(f"Креирање на {args.smer} панорама...")
         print("Вчитување на сликите...")
         sliki = vcitaj_sliki(args.vlez)
 
@@ -198,20 +258,29 @@ def glavna_funkcija():
         print("Промена на големина на сликите...")
         sliki = promeni_golemina_na_slikite(sliki, args.maks_sirina)
 
-        print("Креирање на панорама...")
-        stitcher = PanoramaStitcher()
+        if args.smer == 'auto':
+            print("Креирање на панорама (автоматска детекција на насока)...")
+        else:
+            print(f"Креирање на {args.smer} панорама...")
+        stitcher = PanoramaStitcher(smer=args.smer)
         panorama = stitcher.napravi_panorama(sliki)
 
         if panorama is None:
             print("Неуспех при креирање на панорама!")
             return
 
-        zacuvaj_slika(panorama, args.izlez)
+        # Генерирај уникатно име за излезната слика
+        izlez_patistina = generiraj_unikatno_ime_za_slika(args.izlez)
+
+        zacuvaj_slika(panorama, izlez_patistina)
 
         if args.pokazi:
-            pokazi_slika(panorama, "Панорама - Резултат")
+            if args.smer == 'auto':
+                pokazi_slika(panorama, f"Панорама - Резултат ({os.path.basename(izlez_patistina)})")
+            else:
+                pokazi_slika(panorama, f"Панорама - Резултат ({args.smer}) ({os.path.basename(izlez_patistina)})")
 
-        print("Процесот е успешно завршен!")
+        print(f"✅ Панорамата е успешно зачувана како: {izlez_patistina}")
 
 if __name__ == "__main__":
     glavna_funkcija()
